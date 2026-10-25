@@ -1,0 +1,9 @@
+arch>=8.0
+statsmodels>=0.15
+pandas>=3.0
+numpy>=2.0
+scipy>=1.14
+pyyaml>=6.0
+joblib>=1.4
+matplotlib>=3.9
+plotly>=6.0

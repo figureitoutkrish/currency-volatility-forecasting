@@ -1,0 +1,165 @@
+# Every threshold, seed, date and currency pair used by the project lives here.
+#
+# The settings the report states (start date, test share, rolling window, refit interval,
+# grid size, gate lags and p-value, escalation cap, persistence tolerance, Diebold-Mariano
+# bandwidth, Monte Carlo lengths and replications) are copied from it. The parameters of the
+# simulated "true" models and the seeds are reasonable stand-ins, so a fresh Monte Carlo run
+# gives numbers close to, but not identical with, the report's tables.
+
+# --- Data -------------------------------------------------------------------------------
+pairs: [DEXUSEU, DEXJPUS, DEXINUS]   # FRED ids: EUR/USD, USD/JPY, USD/INR
+start: "2010-01-01"
+test_fraction: 0.2                   # last 20% of each series is the out-of-sample test
+band_confidence: 0.95                # white-noise band for ACF/PACF bars (about 1.96/sqrt(n))
+
+paths:
+  raw_dir: data/raw
+  results_dir: results
+
+fred:
+  url_template: "https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+
+# --- The selector's rules (frozen before any forecast was scored) -----------------------
+mean:
+  trigger: lb_only        # Ljung-Box only (the "spike_or_lb" alternative was calibrated and dropped)
+  spike_lags: 5
+  lb_lags: 10
+  alpha: 0.05
+  max_m: 2                # AR order of the mean is at most 2
+
+arch_check:               # "Check 1": is there any volatility clustering at all?
+  lm_lags: 5
+  lb_lags: 10
+  alpha: 0.05
+
+variance:
+  corr_lags: 20           # lags of the ACF/PACF of squared residuals that are inspected
+  pacf_cut_max_p: 3       # ARCH(p) is only proposed for p <= 3
+  quiet_lags: 3           # no PACF spike right after the cut-off
+  fade_lag: 10            # the ACF of squares must "fade" over lags 10..20 ...
+  fade_max_spikes: 3      # ... with at most 3 chance spikes there
+  cutoff_rule: last_significant
+
+fit:
+  dist: normal
+  persistence_tol: 1.0e-6 # reject a fit when alpha + beta >= 1 - 1e-6
+
+gate:                     # squared standardised residuals must look like white noise
+  lb_lags: [5, 10, 20]
+  lm_lags: 5
+  alpha: 0.05
+
+escalation:
+  cap: 3                  # neighbours (p+1, q) and (p, q+1) never go above 3
+
+frozen:
+  decision_id: "frozen rules"
+
+# --- Baselines and forecasting ----------------------------------------------------------
+baselines:
+  rolling_window: 60      # rolling-variance baseline and the no-valid-fit fallback
+  grid_max: 5             # full grid: p in 1..5, q in 0..5 (30 models)
+
+forecast:
+  refit_every: 20         # rerun the whole selector every 20 test days
+  smoke: false            # true = quick run: first pair only, last smoke_days days
+  smoke_days: 60
+  n_jobs: -1
+
+evaluate:
+  losses: [qlike, mse]
+  samples: [all, common_valid]
+  comparisons:
+    - [hybrid, rolling_var]
+    - [hybrid, fixed_garch11]
+    - [hybrid, grid_bic]
+    - [hybrid, acf_only]
+    - [grid_bic, rolling_var]
+    - [fixed_garch11, rolling_var]
+  grid_selector: grid_bic
+  figure_baseline: rolling_var
+  block_compare: [hybrid, fixed_garch11]
+  dm:
+    lag_c: 4              # Newey-West bandwidth L = floor(4 * (T / 100) ** (2/9))
+    lag_ref: 100
+    lag_exp: 0.2222222222
+    min_days: 50
+
+# --- Monte Carlo ------------------------------------------------------------------------
+sim:
+  R: 500                  # replications per cell
+  n: [500, 1000, 4000]    # series lengths
+  burn: 500
+
+eval:
+  seed_base: 100000       # recovery experiment seeds; disjoint from calibration and diagnostic
+
+calibration:              # where the rules were tuned, on simulated data only
+  seed_base: 0
+  R: 300
+  n: 1000
+  n_jobs: -1
+  models:
+    iid: {sigma: 1.0}
+    arch1: {omega: 0.6, alpha: 0.4}
+    arch2: {omega: 0.5, alphas: [0.3, 0.2]}
+    garch11: {omega: 0.05, alpha: 0.08, beta: 0.90}
+    ar1_garch11: {omega: 0.05, alpha: 0.08, beta: 0.90, phi: 0.3}
+  truth:
+    iid: {order: [0, 0], m: 0}
+    arch1: {order: [1, 0], m: 0}
+    arch2: {order: [2, 0], m: 0}
+    garch11: {order: [1, 1], m: 0}
+    ar1_garch11: {order: [1, 1], m: 1}
+  candidates:
+    fade: {F0: 0, F1: 1, F2: 2, F3: 3, F4: 4}
+    mean_trigger: {M0: spike_or_lb, M1: lb_only}
+    cutoff: {C0: last_significant, C1: contiguous}
+  cutoff_grid:
+    fade: [F0, F3]
+    models: [arch1, arch2, garch11]
+    margin: 0.05
+
+recovery:                 # the order-recovery experiment (omega = 1 - persistence)
+  n_jobs: -1
+  smoke: false
+  smoke_R: 50
+  smoke_n: [500]
+  grid_n: [1000]          # the 30-model grid only runs at n = 1000
+  models:
+    arch1: {alphas: [0.4], betas: []}
+    garch11: {alphas: [0.08], betas: [0.90]}
+    garch21: {alphas: [0.05, 0.05], betas: [0.85]}
+    garch12: {alphas: [0.10], betas: [0.45, 0.40]}
+    garch11_t: {alphas: [0.08], betas: [0.90], dist: t, nu: 6}
+    iid: {alphas: [], betas: []}
+    ar1_garch11: {alphas: [0.08], betas: [0.90], phi: 0.3}
+
+diagnostic:               # post-hoc: why ARCH(1) recovery falls as n grows
+  alphas: [0.2, 0.4]
+  n: [500, 4000]
+  R: 500
+  seed_base: 200000
+  lag_min: 2
+  lag_max: 5
+  change_tol: 0.02
+
+# --- Labels for the dashboard helpers (src/dashboard.py) --------------------------------
+app:
+  pair_labels: {DEXUSEU: EUR/USD, DEXJPUS: USD/JPY, DEXINUS: USD/INR}
+  param_labels: {mu: mean, Const: constant, omega: omega (baseline variance), alpha: alpha (reaction to shocks),
+                 beta: beta (memory of variance), nu: degrees of freedom}
+  percent_columns: [fallback_share, flagged_share]
+  rate_labels: {exact: exact order found, nesting: chosen model contains the truth,
+                family: right family (ARCH vs GARCH), any_ar_rate: AR term added to the mean,
+                gate_pass: passed the diagnostic gate, escalation_rate: needed escalation,
+                flagged: flagged, no_valid_fit: no valid fit}
+  value_labels:
+    dist: {normal: Normal, t: Student-t}
+    step: {start: rule's starting order, neighbour: neighbour order, student_t: Student-t errors,
+           constant_variance: constant variance}
+    why: {ok: valid, "omega<=0": omega not positive, negative alpha/beta: negative coefficient,
+          "persistence>=1-tol": persistence at the boundary}
+  simulate:
+    max_live_R: 200
+    chart_rates: [exact, nesting, family, gate_pass]
