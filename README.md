@@ -186,7 +186,7 @@ Real data never tells you the true model, so we simulated data from models we ch
 ## Run it yourself
 
 ```bash
-git clone https://github.com/figureitoutkrish/currency-volatility-forecasting.git
+git clone https://github.com/figureitoutwithkrish/currency-volatility-forecasting.git
 cd currency-volatility-forecasting
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -319,7 +319,7 @@ Diebold-Mariano results (QLIKE, all test days):
 This was a **team project** for an Advanced Time Series Analysis course. I worked on it as a collaborator; it was **not built by me alone**.
 
 - **Arnav Chaturvedi**, collaborator
-- **Krish Viramgama**, collaborator ([@figureitoutkrish](https://github.com/figureitoutkrish))
+- **Krish Viramgama**, collaborator ([@figureitoutwithkrish](https://github.com/figureitoutwithkrish))
 
 **Data:** Board of Governors of the Federal Reserve System, H.10 release, via FRED (Federal Reserve Bank of St. Louis).
 
